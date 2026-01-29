@@ -26,6 +26,19 @@ type EmbeddingsConfig struct {
 	BaseURL string `yaml:"base_url"`
 }
 
+// UnmarshalYAML handles "embeddings: false" (bool) as well as the full object form.
+func (e *EmbeddingsConfig) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		var b bool
+		if err := value.Decode(&b); err == nil {
+			e.Enabled = b
+			return nil
+		}
+	}
+	type plain EmbeddingsConfig
+	return value.Decode((*plain)(e))
+}
+
 // DefaultPath returns ~/.botmem/config.yaml
 func DefaultPath() (string, error) {
 	home, err := os.UserHomeDir()

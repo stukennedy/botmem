@@ -73,6 +73,20 @@ func TestSave_FilePermissions(t *testing.T) {
 	}
 }
 
+func TestLoad_EmbeddingsBool(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	os.WriteFile(path, []byte("llm:\n  provider: anthropic\nembeddings: false\n"), 0600)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Embeddings.Enabled {
+		t.Error("expected embeddings disabled")
+	}
+}
+
 func TestExists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
