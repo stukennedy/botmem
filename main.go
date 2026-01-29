@@ -405,14 +405,93 @@ func contextCmd() *cobra.Command {
 }
 
 func initCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Set up botmem — configure LLM provider, API keys, and embeddings",
+		Long: `Set up botmem configuration.
+
+Interactive (default):
+  botmem init
+
+Non-interactive (for agents/scripts):
+  botmem init --provider claude
+  botmem init --provider anthropic --api-key sk-ant-...
+  botmem init --provider anthropic  # uses ANTHROPIC_API_KEY env var
+  botmem init --provider ollama --model llama3.2 --url http://localhost:11434`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			provider, _ := cmd.Flags().GetString("provider")
+
+			// If --provider is set, run non-interactive init
+			if provider != "" {
+				return runNonInteractiveInit(cmd)
+			}
+
+			// Otherwise, run the TUI
 			_, err := config.RunInitTUI()
 			return err
 		},
 	}
+	cmd.Flags().String("provider", "", "LLM provider: claude, anthropic, or ollama")
+	cmd.Flags().String("api-key", "", "API key (for anthropic provider)")
+	cmd.Flags().String("model", "", "Model name (default varies by provider)")
+	cmd.Flags().String("url", "", "Base URL (for ollama provider)")
+	cmd.Flags().Bool("embeddings", false, "Enable semantic embeddings (requires Ollama)")
+	cmd.Flags().String("embeddings-model", "nomic-embed-text", "Embedding model")
+	cmd.Flags().String("embeddings-url", "http://localhost:11434", "Ollama URL for embeddings")
+	return cmd
+}
+
+func runNonInteractiveInit(cmd *cobra.Command) error {
+	provider, _ := cmd.Flags().GetString("provider")
+	apiKey, _ := cmd.Flags().GetString("api-key")
+	model, _ := cmd.Flags().GetString("model")
+	baseURL, _ := cmd.Flags().GetString("url")
+	enableEmb, _ := cmd.Flags().GetBool("embeddings")
+	embModel, _ := cmd.Flags().GetString("embeddings-model")
+	embURL, _ := cmd.Flags().GetString("embeddings-url")
+
+	cfg := &config.Config{}
+
+	switch provider {
+	case "claude":
+		cfg.LLM.Provider = "claude"
+		cfg.LLM.Model = "claude"
+	case "anthropic":
+		cfg.LLM.Provider = "anthropic"
+		if model == "" {
+			model = "claude-sonnet-4-20250514"
+		}
+		cfg.LLM.Model = model
+		cfg.LLM.APIKey = apiKey // empty is fine — will use ANTHROPIC_API_KEY env var
+	case "ollama":
+		cfg.LLM.Provider = "ollama"
+		if model == "" {
+			model = "llama3.2"
+		}
+		cfg.LLM.Model = model
+		if baseURL == "" {
+			baseURL = "http://localhost:11434"
+		}
+		cfg.LLM.BaseURL = baseURL
+	default:
+		return fmt.Errorf("unknown provider %q — use claude, anthropic, or ollama", provider)
+	}
+
+	if enableEmb {
+		cfg.Embeddings.Enabled = true
+		cfg.Embeddings.Model = embModel
+		cfg.Embeddings.BaseURL = embURL
+	}
+
+	if err := config.Save(cfg, ""); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	path, _ := config.DefaultPath()
+	fmt.Printf("✓ Config saved to %s\n", path)
+	fmt.Printf("  Provider: %s\n", cfg.LLM.Provider)
+	fmt.Printf("  Model: %s\n", cfg.LLM.Model)
+	return nil
 }
 
 func loadIngestConfig() (*ingest.Config, error) {
