@@ -188,9 +188,12 @@ func extractWithOllama(text string, cfg *Config) (*ExtractionResult, error) {
 		return nil, fmt.Errorf("decode ollama response: %w", err)
 	}
 
+	// Strip markdown code fences if present
+	content := stripCodeFences(ollamaResp.Message.Content)
+	
 	var result ExtractionResult
-	if err := json.Unmarshal([]byte(ollamaResp.Message.Content), &result); err != nil {
-		return nil, fmt.Errorf("decode extraction result: %w\nraw: %s", err, ollamaResp.Message.Content)
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("decode extraction result: %w\nraw: %s", err, content)
 	}
 	return &result, nil
 }
@@ -236,9 +239,12 @@ func extractWithAnthropic(text, apiKey string) (*ExtractionResult, error) {
 		return nil, fmt.Errorf("empty anthropic response")
 	}
 
+	// Strip markdown code fences if present
+	content := stripCodeFences(anthropicResp.Content[0].Text)
+	
 	var result ExtractionResult
-	if err := json.Unmarshal([]byte(anthropicResp.Content[0].Text), &result); err != nil {
-		return nil, fmt.Errorf("decode extraction result: %w\nraw: %s", err, anthropicResp.Content[0].Text)
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("decode extraction result: %w\nraw: %s", err, content)
 	}
 	return &result, nil
 }
@@ -273,14 +279,25 @@ func extractWithClaude(text string) (*ExtractionResult, error) {
 
 func stripCodeFences(s string) string {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		// Remove opening fence (```json or ```)
-		if idx := strings.Index(s, "\n"); idx != -1 {
-			s = s[idx+1:]
+	
+	// Find ```json or ``` fence anywhere in the string
+	fenceStart := strings.Index(s, "```json")
+	if fenceStart == -1 {
+		fenceStart = strings.Index(s, "```")
+	}
+	
+	if fenceStart != -1 {
+		// Find the newline after the opening fence
+		afterFence := s[fenceStart:]
+		if idx := strings.Index(afterFence, "\n"); idx != -1 {
+			s = afterFence[idx+1:]
 		}
 	}
-	if strings.HasSuffix(s, "```") {
-		s = s[:len(s)-3]
+	
+	// Strip closing fence
+	if idx := strings.LastIndex(s, "```"); idx != -1 {
+		s = s[:idx]
 	}
+	
 	return strings.TrimSpace(s)
 }
